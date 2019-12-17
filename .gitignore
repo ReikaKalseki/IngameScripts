@@ -18,6 +18,17 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+*.csproj
+*.dll
+*.xml
+*.pdb
+*.config
+*.cache
+*.txt
+*.exe
+*AssemblyInfo*
+*Dummy*
+
 # =========================
 # Operating System Files
 # =========================
