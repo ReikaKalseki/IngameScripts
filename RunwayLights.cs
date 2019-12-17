@@ -61,14 +61,14 @@ namespace Ingame_Scripts.RunwayLights {
 				List<IMyLightingBlock> li = new List<IMyLightingBlock>();
 				grp.GetBlocksOfType<IMyLightingBlock>(li, b => b.CubeGrid == Me.CubeGrid);
 				foreach (IMyLightingBlock b in li) {
-					lights.Add(new Light(b));
+					lights.Add(new Light(b, colorList));
 				}
 			}
 		}
 		
 		public void Main() { //called each cycle					
 			foreach (Light l in lights) {
-				l.tick(colorList);
+				l.tick();
 			}
 			tick++;
 		}
@@ -101,29 +101,31 @@ namespace Ingame_Scripts.RunwayLights {
 			private readonly IMyLightingBlock light;
 			private readonly int offset;
 			
-			private ColorStage color;
-			private int index;
-			private int ticksOnStage;
+			private readonly List<int> colors = new List<int>();
 			
-			public Light(IMyLightingBlock b) {
+			private int index;
+			
+			public Light(IMyLightingBlock b, ColorStage[] data) {
 				light = b;
 				Vector3I pos = b.Position;
 				offset = (pos.X*xAxisSpeed+pos.Y*yAxisSpeed+pos.Z*zAxisSpeed);
-			}
-			
-			public void tick(ColorStage[] colors) {
-				ticksOnStage++;
-				if (ticksOnStage >= color.duration) {
-					index++;
-					if (index >= colors.Length)
-						index = 0;
-					color = colors[index];
+				
+				for (int i = 0; i < data.Length; i++) {
+					ColorStage c = data[i];
+					for (int n = 0; n < c.duration; n++) {
+						colors.Add(c.color);
+					}
 				}
 			}
 			
-			private void apply() {
-				light.Color = convertColor(color.color);
-				light.Enabled = color.color > 0;
+			public void tick() {
+				index++;
+				if (index >= colors.Count)
+					index = 0;
+				int color = colors[(((index+offset)%colors.Count)+colors.Count)%colors.Count];
+				
+				light.Color = convertColor(color);
+				light.Enabled = color > 0;
 			}
 			
 		}
