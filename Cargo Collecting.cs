@@ -19,7 +19,7 @@ using IMyInventoryItem = VRage.Game.ModAPI.Ingame.IMyInventoryItem;
 using MyInventoryItem = VRage.Game.ModAPI.Ingame.MyInventoryItem;
 using IMyEntity = VRage.Game.ModAPI.Ingame.IMyEntity;
 
-namespace Ingame_Scripts.CargoOffloading {
+namespace Ingame_Scripts.CargoCollecting {
 	
 	public class Program : MyGridProgram {
 		
@@ -29,17 +29,16 @@ namespace Ingame_Scripts.CargoOffloading {
 		//----------------------------------------------------------------------------------------------------------------
 		//Change the values of any of these as you see fit to configure the script as per your ship configuration or needs
 		//----------------------------------------------------------------------------------------------------------------
-		private string[] OFFLOAD_SHIPS = {"Anaconda"}; //Which ships the script should try to offload cargo into (Grid names)
+		
 		//----------------------------------------------------------------------------------------------------------------
 		private static bool isInventory(IMyTerminalBlock b) { //which block types to attempt to empty
-			return b is IMyCargoContainer || b is IMyShipConnector || b is IMyCockpit || b is IMyShipToolBase;
+			return b.GetInventory() != null;
 		}
 		//----------------------------------------------------------------------------------------------------------------
 		//Do not change anything below here, as this is the actual program.
 		//----------------------------------------------------------------------------------------------------------------
-		private readonly HashSet<String> shipsToOffload = new HashSet<string>();				
-		private readonly List<IMyTerminalBlock> ourContainers = new List<IMyTerminalBlock>();
-		private readonly List<IMyCargoContainer> containersToFill = new List<IMyCargoContainer>();
+		private readonly List<IMyTerminalBlock> containersToDrain = new List<IMyTerminalBlock>();
+		private readonly List<IMyCargoContainer> ourContainers = new List<IMyCargoContainer>();
 		
 		private readonly List<IMyTerminalBlock> currentSources = new List<IMyTerminalBlock>();
 		private IMyCargoContainer currentPreferredTarget = null;
@@ -53,27 +52,24 @@ namespace Ingame_Scripts.CargoOffloading {
 		
 		public Program() {
 			Runtime.UpdateFrequency = UpdateFrequency.Update10;			
-			GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(ourContainers, b => b.CubeGrid == Me.CubeGrid && isInventory(b));
-			foreach (string s in OFFLOAD_SHIPS) {
-				shipsToOffload.Add(s);
-			}
+			GridTerminalSystem.GetBlocksOfType<IMyCargoContainer>(ourContainers, b => b.CubeGrid == Me.CubeGrid);
 			buildCounts();
 			lastTotal = totalItems;
 		}
 		
 		public void Main() { //called each cycle
 			if (currentSources.Count == 0) {
-				currentSources.AddList(ourContainers);
+				currentSources.AddList(containersToDrain);
 			}
 			if (tick%5 == 0) {
-				containersToFill.Clear();
-				GridTerminalSystem.GetBlocksOfType<IMyCargoContainer>(containersToFill, b => b.CubeGrid != Me.CubeGrid && shipsToOffload.Contains(b.CubeGrid.DisplayName));
+				containersToDrain.Clear();
+				GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(containersToDrain, b => b.CubeGrid != Me.CubeGrid && isInventory(b));
 			}
-			if (containersToFill.Count == 0) {
-				Echo("No valid target inventories.");
+			if (currentSources.Count == 0) {
+				Echo("No valid source inventories.");
 				return;
 			}
-			Echo("Emptying "+ourContainers.Count+" containers into "+containersToFill.Count+" targets.");
+			Echo("Emptying "+containersToDrain.Count+" containers into "+ourContainers.Count+" targets.");
 			IMyTerminalBlock box = getRandom(currentSources);
 			if (isEmpty(box)) {
 				Echo(box.CustomName+" is already empty.");
@@ -103,10 +99,10 @@ namespace Ingame_Scripts.CargoOffloading {
 		private void buildCounts() {
 			totalItems = 0;
 			
-			foreach (IMyCargoContainer box in containersToFill) {
+			foreach (IMyCargoContainer box in ourContainers) {
 				countInventory(box);
 			}
-			foreach (IMyTerminalBlock box in ourContainers) {
+			foreach (IMyTerminalBlock box in containersToDrain) {
 				countInventory(box);
 			}
 		}
@@ -162,7 +158,7 @@ namespace Ingame_Scripts.CargoOffloading {
 		private IMyCargoContainer getTargetToFill() {
 			if (currentPreferredTarget != null && currentPreferredTarget.GetInventory().IsFull)
 				currentPreferredTarget = null;
-			return currentPreferredTarget != null ? currentPreferredTarget : getRandom(containersToFill);
+			return currentPreferredTarget != null ? currentPreferredTarget : getRandom(ourContainers);
 		}
 		
 		//====================================================
