@@ -48,7 +48,7 @@ namespace Ingame_Scripts.CargoManager {
 			return !name.Contains("shieldgenerator"); //Shields ignored by default
 		}
 		
-		public static int cargoBoxSortOrder(IMyCargoContainer box1, IMyCargoContainer box2) { //Standard Java/C# Comparator formula, used to determine the sorting order of cargo containers, and thus filling priority.
+		public static int cargoBoxSortOrder(IMyCargoContainer box1, IMyCargoContainer box2) { //Standard Java/C# Comparator format, used to determine the sorting order of cargo containers, and thus filling priority.
 			return box1.CustomName.CompareTo(box2.CustomName); //Default string comparison, which will end up being based on their autogenned numbers
 		}
 		
@@ -384,25 +384,38 @@ namespace Ingame_Scripts.CargoManager {
 		}
 		
 		private bool moveItem(IMyInventory src, IMyInventory tgt, MyInventoryItem item) {
-			if (src.TransferItemTo(tgt, item, item.Amount)) {
-				//show("Moved "+item.Amount.ToIntSafe()+" of "+item.Type.SubtypeId+" from "+src.Owner.Name+" to "+tgt.Owner.Name);
-				return true;
-			}
-			else {
-				//show("Could not move "+item.Type.SubtypeId+" from "+src.Owner.Name+" to "+tgt.Owner.Name);
-				return false;
-			}
+			return moveItem(src, tgt, item, item.Amount.ToIntSafe());
 		}
 		
 		private bool moveItem(IMyInventory src, IMyInventory tgt, MyInventoryItem item, int amt) {
+			bool ret = false;
+			IMyProductionBlock prod1 = src as IMyProductionBlock;
+			IMyProductionBlock prod2 = tgt as IMyProductionBlock;
+			bool flag1 = false;
+			if (prod1 != null) {
+				flag1 = prod1.UseConveyorSystem;
+				prod1.UseConveyorSystem = true;
+			}
+			bool flag2 = false;
+			if (prod2 != null) {
+				flag2 = prod2.UseConveyorSystem;
+				prod2.UseConveyorSystem = true;
+			}
 			if (src.TransferItemTo(tgt, item, amt)) {
 				//show("Moved "+amt+" of "+item.Type.SubtypeId+" from "+src.Owner.Name+" to "+tgt.Owner.Name);
-				return true;
+				ret = true;
 			}
 			else {
 				//show("Could not move "+item.Type.SubtypeId+" from "+src.Owner.Name+" to "+tgt.Owner.Name);
-				return false;
+				ret = false;
 			}
+			if (prod1 != null) {
+				prod1.UseConveyorSystem = flag1;
+			}
+			if (prod2 != null) {
+				prod2.UseConveyorSystem = flag2;
+			}
+			return ret;
 		}
 		
 		private void show(string text) {
