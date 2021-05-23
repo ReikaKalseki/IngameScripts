@@ -36,13 +36,20 @@ namespace Ingame_Scripts.CargoManager {
 		//const bool ENABLE_ORE_PRIORITIES = true; //Whether to process ores in order of priority, determined primarily by what is in lowest supply but also by how much use that ore has
 		const bool ENABLE_ORE_SORTING = true; //Whether ore should be sorted automatically between refinery types; useful if you have mods for specialized processing
 		//const bool ENABLE_CARGO_COLLATION = true; //Whether items should be collated in cargo storage, i.e. putting all items of a type together, if possible
-		const bool MOVE_FROM_SMALL_TO_LARGE = true; //Whether items should be moved frmo small to large containers if possible
+		const bool MOVE_FROM_SMALL_TO_LARGE = true; //Whether items should be moved from small to large containers if possible
 		readonly string[] EJECT_OVERFULL_ITEMS = {"Ore/Stone", "Ingot/Stone"}; //Which items to eject if they get too full. Empty list for none.
 		const float EJECTION_THRESHOLD = 0.9F; //To be ejected, the cargo space must be at least this fraction full, and the item must represent at least this fraction of all stored items.
 		//----------------------------------------------------------------------------------------------------------------
 		
+		//----------------------------------------------------------------------------------------------------------------
+		//Change the body of any of these as you see fit to configure how certain functions are evaluated.
+		//----------------------------------------------------------------------------------------------------------------
 		public static bool isActualProcessingRefinery(string name) { //Some mods use blocks which are refineries internally, but have no cargo handling nor ore processing. Use this to filter them out.
 			return !name.Contains("shieldgenerator"); //Shields ignored by default
+		}
+		
+		public static int cargoBoxSortOrder(IMyCargoContainer box1, IMyCargoContainer box2) { //Standard Java/C# Comparator formula, used to determine the sorting order of cargo containers, and thus filling priority.
+			return box1.CustomName.CompareTo(box2.CustomName); //Default string comparison, which will end up being based on their autogenned numbers
 		}
 		
 		//----------------------------------------------------------------------------------------------------------------
@@ -74,6 +81,7 @@ namespace Ingame_Scripts.CargoManager {
 		public Program() {
 			Runtime.UpdateFrequency = UpdateFrequency.Update10;			
 			GridTerminalSystem.GetBlocksOfType<IMyCargoContainer>(cargo, b => b.CubeGrid == Me.CubeGrid);
+			cargo.Sort(cargoBoxSortOrder);
 			GridTerminalSystem.GetBlocksOfType<IMyGasGenerator>(oxyGenerators, b => b.CubeGrid == Me.CubeGrid && (b.BlockDefinition.SubtypeName.Length == 0 || b.BlockDefinition.SubtypeName.ToLowerInvariant().Contains("oxygen")));
 			GridTerminalSystem.GetBlocksOfType<IMyAssembler>(assemblers, b => b.CubeGrid == Me.CubeGrid);
 			GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(displays, b => b.CubeGrid == Me.CubeGrid && b.CustomName.Contains(DISPLAY_TAG));
@@ -276,7 +284,7 @@ namespace Ingame_Scripts.CargoManager {
 			foreach (IMyCargoContainer box in cache) {
 				IMyInventory inv = box.GetInventory();
 				List<MyInventoryItem> li = new List<MyInventoryItem>();
-				inv.GetItems(li, b => item.match(b));
+				inv.GetItems(li, item.match);
 				if (li.Count > 0) {
 					return new FoundItem(li[0], inv);
 				}
@@ -497,7 +505,7 @@ namespace Ingame_Scripts.CargoManager {
 			internal ItemProfile(string split) {
 				string[] parts = split.Split('/');
 				itemType = strip(parts[0]);
-				itemType = strip(parts[1]);
+				itemSubType = strip(parts[1]);
 			}
 			
 			internal ItemProfile(string type, string sub) {

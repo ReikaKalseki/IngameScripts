@@ -49,7 +49,7 @@ namespace Ingame_Scripts.HangarControl {
 		//Change the body of any of these as you see fit to configure how certain functions are evaluated.
 		//----------------------------------------------------------------------------------------------------------------
 		 //whether a given vent or internal door is connected to the hangar of a given ID;
-		 //This is usually "hangar and vent/door are part of the same group", but might be different if for exmaple the hangars are all connected, sharing doors and/or vents
+		 //This is usually "hangar and vent/door are part of the same group", but might be different if for example the hangars are all connected, sharing doors and/or vents
 		internal static bool isConnectedToHangar(string blockName, string id) {
 		 	return blockName.Contains(id);
 		}

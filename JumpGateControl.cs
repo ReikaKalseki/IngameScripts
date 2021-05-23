@@ -27,7 +27,7 @@ namespace Ingame_Scripts.JumpGateControl {
 		const string EXCLUSION_TAG = "NonDriveGravGen"; //Gravity generators with this in their name will be ignored for the jump gate control
 		
 		//Whether to automatically determine the direction of the gate by counting grav gens.
-		//If false, assumes directionality inline wiht the programmable block running this script.
+		//If false, assumes directionality inline with the programmable block running this script.
 		const bool FIND_DIRECTION_AUTOMATICALLY = false;
 		const float RECHARGE_THRESHOLD = 0.8F; //If the battery fill fraction drops below this, recharging mode will be enabled.
 		const float WAVE_SPEED = 1F; //How fast the light wave should move down the gate
