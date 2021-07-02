@@ -27,7 +27,7 @@ namespace Ingame_Scripts.GravityControl {
 		const string DISPLAY_TAG = "[GravityStatus]"; //Any LCD panel with this in its name is overridden to show the gravity status
 		
 		const float TARGET_GRAVITY = 0.2F; //The desired net gravity level in Gs
-		const float MAX_ORE_GRAVITY = 0.00F; //The maximum gravity at which Ore Detectors are enabled. Not recommended to be anything above 0.05 for long-range modded detectors.
+		const float MAX_ORE_GRAVITY = 0.05F; //The maximum gravity at which Ore Detectors are enabled. Not recommended to be anything above 0.05 for long-range modded detectors.
 		
 		const bool SPLIT_GRAVITY = false; //Whether to split the desired artificial gravity equally among all generators. Ie, do their ranges substantially overlap?
 		//----------------------------------------------------------------------------------------------------------------
@@ -49,6 +49,8 @@ namespace Ingame_Scripts.GravityControl {
 		
 		private readonly List<IMyTextPanel> displays = new List<IMyTextPanel>();
 		
+		internal Base6Directions.Direction upDirection;
+		
 		public Program() {
 			Runtime.UpdateFrequency = UpdateFrequency.Update100;
 			
@@ -63,6 +65,25 @@ namespace Ingame_Scripts.GravityControl {
 			GridTerminalSystem.GetBlocksOfType<IMyGravityGenerator>(gravGens, b => b.CubeGrid == Me.CubeGrid && !gravDrives.Contains(b));
 			GridTerminalSystem.GetBlocksOfType<IMyOreDetector>(oreDetectors, b => b.CubeGrid == Me.CubeGrid);
 			GridTerminalSystem.GetBlocksOfType<IMyShipController>(cockpits, b => b.CubeGrid == Me.CubeGrid);
+			
+			upDirection = Me.Orientation.Up;
+			Dictionary<Base6Directions.Direction, int> counts = new Dictionary<Base6Directions.Direction, int>();
+			foreach (IMyShipController control in li) {
+				Base6Directions.Direction dir = control.Orientation.Up;
+				int has = 0;
+				counts.TryGetValue(dir, out has);
+				has++;
+				counts[dir] = has;
+			}
+			int max = 0;
+			Base6Directions.Direction found = upDirection;
+			foreach (var entry in counts) {
+				if (entry.Value > max) {
+					max = entry.Value;
+					found = entry.Key;
+				}
+			}
+			upDirection = found;
 		}
 		
 		public void Main() {
@@ -111,13 +132,24 @@ namespace Ingame_Scripts.GravityControl {
 				Echo("Gravity Drive is working, all other gravity disabled.");
 				f = 0;
 			}
+			else {
+				Echo("Setting gravity generator level to "+f*100+"% in direction "+upDirection.ToString());
+			}
 			foreach (IMyGravityGenerator gen in gravGens) {					
 				if (f <= 0 || g <= 0) {
 					gen.Enabled = false;
 				}
 				else {
-					gen.Enabled = true;
-					gen.GravityAcceleration = g*9.81F*f;
+					float sign = 0;
+					if (gen.Orientation.Up == upDirection) {
+						sign = 1;
+					}
+					else if (gen.Orientation.Up == Base6Directions.GetFlippedDirection(upDirection)) {
+						sign = -1;
+					}
+					float amt = g*9.81F*f*sign;
+					gen.Enabled = Math.Abs(amt) > 0;
+					gen.GravityAcceleration = amt;
 				}
 			}
 		}

@@ -11,6 +11,8 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
+using VRage.Game.GUI.TextPanel;
+
 using IMyEntity = VRage.Game.ModAPI.Ingame.IMyEntity;
 //using MyDetectedEntityInfo = SpaceEngineers.Game.ModAPI.Ingame.MyDetectedEntityInfo;
 using IMyAirVent = SpaceEngineers.Game.ModAPI.Ingame.IMyAirVent;
@@ -40,6 +42,7 @@ namespace Ingame_Scripts.HangarControl {
 		const float COLOR_FADE_DURATION = 60; //How many update cycles (in 1/60th of a second) should be spent fading between colors.
 		const float OPEN_ATMO_THRESHOLD = 80F; //If atmospheric O2 is above this percentage, hangars will be left open; set this over 100 to disable that behavior
 		const bool allowOpenIfNoO2Space = true; //Whether to allow the hangar to open when pressurized but there is no space to put the air in tanks
+		const string SCREEN_TAG = "AirLevel"; //Any LCD panel with this (and a hangar ID) in its name will show the air level in its hangar
 		
 		readonly string[] HANGAR_GROUPS = {"Hangar"}; //Each string in this list is treated as a separate hangar group ('ID').
 		//----------------------------------------------------------------------------------------------------------------
@@ -90,6 +93,8 @@ namespace Ingame_Scripts.HangarControl {
 			}
 			closedDoors.Clear();
 			depressurizing.Clear();
+			if (full)
+				Echo("Ship O2 reserves at "+o2TankFill*100+"%. Currently depressurizing vents: "+depressurizing.Count+"=["+string.Join(", ", depressurizing)+"]");
 			foreach (Hangar h in hangars) {
 				h.tick(full, externalAtmo, o2TankFill, closedDoors, depressurizing);
 			}
@@ -133,10 +138,32 @@ namespace Ingame_Scripts.HangarControl {
 			private readonly List<IMySensorBlock> sensors = new List<IMySensorBlock>();
 			private readonly List<IMyDoor> doors = new List<IMyDoor>();
 			private readonly List<IMyAirtightHangarDoor> entrance = new List<IMyAirtightHangarDoor>();
+			private readonly List<IMyTextPanel> screens = new List<IMyTextPanel>();
 		
 			private Color currentColor;
 			private Color lastColor;
 			private int colorTick;
+			
+			private const float BLUE_THRESH = 0.95F;
+			private const float GREEN_THRESH = 0.7F;
+			private const float YELLOW_THRESH = 0.5F;
+			private const float ORANGE_THRESH = 0.3F;
+			private const float RED_THRESH = 0.1F;
+			
+			private readonly Color BLUE_COLOR = new Color(40, 120, 255, 255);
+			private readonly Color GREEN_COLOR = new Color(40, 255, 40, 255);
+			private readonly Color YELLOW_COLOR = new Color(255, 255, 40, 255);
+			private readonly Color ORANGE_COLOR = new Color(255, 128, 40, 255);
+			private readonly Color RED_COLOR = new Color(255, 40, 40, 255);
+			private readonly Color DARKRED_COLOR = new Color(127, 40, 40, 255);
+			
+			private readonly Color BLACK = new Color(0, 0, 0, 255);		
+			private readonly Color GRAY1 = new Color(60, 60, 60, 255);	
+			private readonly Color GRAY2 = new Color(20, 20, 20, 255);		
+			private readonly Color WHITE = new Color(255, 255, 255, 255);		
+			private readonly Vector2 screenSize = new Vector2(512, 512);	
+			private readonly Vector2 barSize1 = new Vector2(384, 512);		
+			private readonly Vector2 barSize2 = new Vector2(384-16, 512);	
 			
 			internal Hangar(MyGridProgram p, string id) {
 				caller = p;
@@ -157,6 +184,7 @@ namespace Ingame_Scripts.HangarControl {
 				
 				caller.GridTerminalSystem.GetBlocksOfType<IMyAirVent>(vents, b => isConnectedToHangar(b.CustomName, hangarID) && b.CustomName.Contains(VENT_GROUP_TAG) && b.CubeGrid == shipGrid);
 				caller.GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors, b => b.CustomName.Contains(hangarID) && b.CustomName.Contains(SENSOR_TAG) && b.CubeGrid == shipGrid);
+				caller.GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(screens, b => b.CustomName.Contains(hangarID) && b.CustomName.Contains(SCREEN_TAG) && b.CubeGrid == shipGrid);
 				
 				caller.GridTerminalSystem.GetBlocksOfType<IMyAirtightHangarDoor>(entrance, b => b.CustomName.Contains(hangarID) && b.CustomName.Contains(hangarID) && b.CubeGrid == shipGrid);
 				caller.GridTerminalSystem.GetBlocksOfType<IMyDoor>(doors, b => isConnectedToHangar(b.CustomName, hangarID) && b.CubeGrid == shipGrid && !(b is IMyAirtightHangarDoor));
@@ -191,6 +219,10 @@ namespace Ingame_Scripts.HangarControl {
 				}			
 				foreach (IMyLightingBlock light in auxLights) {
 					light.Enabled = f >= AMBIENT_LIGHT_THRESHOLD;
+				}			
+				float frac = f/100F;
+				foreach (IMyTextPanel scr in screens) {
+					setScreenContent(scr, frac);
 				}
 				colorTick++;
 			}
@@ -201,6 +233,35 @@ namespace Ingame_Scripts.HangarControl {
 					sum += vent.GetOxygenLevel();
 				}			
 				return sum*100F/vents.Count;
+			}
+			
+			private void setScreenContent(IMyTextPanel scr, float f) {
+				scr.ContentType = ContentType.SCRIPT;
+       			MySpriteDrawFrame frame = scr.DrawFrame();
+       			frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", size: screenSize, color: BLACK));
+       			frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", size: barSize1, color: GRAY1));
+       			frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", size: barSize2, color: GRAY2));
+				
+       			drawBox(frame, f, BLUE_COLOR, 1);
+       			drawBox(frame, f, GREEN_COLOR, BLUE_THRESH);
+       			drawBox(frame, f, YELLOW_COLOR, GREEN_THRESH);
+       			drawBox(frame, f, ORANGE_COLOR, YELLOW_THRESH);
+       			drawBox(frame, f, RED_COLOR, ORANGE_THRESH);
+       			drawBox(frame, f, DARKRED_COLOR, RED_THRESH);
+       			
+       			frame.Add(MySprite.CreateText(String.Format("{0:0.000}", (f*100))+"%", "monospace", WHITE, 3));
+       			
+       			frame.Dispose();
+			}
+			
+			private void drawBox(MySpriteDrawFrame frame, float f, Color c, float limit) {
+				f = Math.Min(f, limit);
+				float h = f*512;
+				Vector2 box = new Vector2(barSize2.X, h);
+    			Vector2 ctr = new Vector2(256, 512-h/2);
+    			MySprite sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", size: box, color: c);
+       			sprite.Position = ctr;
+				frame.Add(sprite);
 			}
 		
 			private void setHangarStatus(bool open, float air, float atmo, double tankFill, HashSet<IMyDoor> closedDoors, HashSet<IMyAirVent> depressurizing) {
@@ -222,9 +283,12 @@ namespace Ingame_Scripts.HangarControl {
 						door.OpenDoor();
 					else
 						door.CloseDoor();
-					if (door.OpenRatio > 0)
+					if (door.OpenRatio > 0) {
 						locked = false;
+						//caller.Echo("Hangar '"+hangarID+"' has open ("+door.OpenRatio*100+"%) door: "+door.CustomName);
+					}
 				}
+				//caller.Echo("Hangar '"+hangarID+"' door state: "+locked);
 				foreach (IMyAirVent vent in vents) {
 					vent.Depressurize = open || !locked || depressurizing.Contains(vent);
 					if (vent.Depressurize)

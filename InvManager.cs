@@ -2,8 +2,7 @@
 
 using VRage.Game;
 using VRage.Game.Components;
-using VRage.Game.ModAPI;
-using VRage.ModAPI;
+using VRage.Game.ModAPI.Ingame;
 using VRage.ObjectBuilders;
 using VRageMath;
 
@@ -40,12 +39,14 @@ namespace Ingame_Scripts.CargoManager {
 		const bool MOVE_FROM_SMALL_TO_LARGE = true; //Whether items should be moved from small to large containers if possible
 		const bool SKIP_OFFLINE_REFINERIES = true; //Whether offline refineries should be ignored for the purposes of ore routing; this allows choosing between either holding onto the ore until a "better" refinery is available or ignoring those refineries and just using the most applicable enabled one.
 		const bool ENABLE_O2_GENS = false; //Whether offline O2/H2 generators should be ignored, vs turned on as long as there is work for them. 
-		readonly string[] EJECT_OVERFULL_ITEMS = {"Ore/Stone", "Ingot/Stone"}; //Which items to eject if they get too full. Empty list for none.
+		readonly string[] EJECT_OVERFULL_ITEMS = {"ore/stone", "ingot/stone"}; //Which items to eject if they get too full. Empty list for none.
 		const float EJECTION_THRESHOLD = 0.9F; //To be ejected, the cargo space must be at least this fraction full, and the item must represent at least this fraction of all stored items.
 		
-		readonly string[] ORE_PRIORITY = {"Iron/50000", "Nickel/7500", "Silicon/2500", "Cobalt/1000", "Silver/500", "Gold/200"}; //Ore types and the ingot threshold at which they are given priority (ie if you have less than this amount of refined metal). If multiple "priority" ores are applicable, the ordering of this list determines priority among them.
+		readonly string[] ORE_PRIORITY = {"Iron/50000", "Nickel/10000", "Silicon/5000", "Cobalt/2500", "Silver/1000", "Gold/200"}; //Ore types and the ingot threshold at which they are given priority (ie if you have less than this amount of refined metal). If multiple "priority" ores are applicable, the ordering of this list determines priority among them.
 		
 		readonly string[] SORTING = {""}; //Which item types to sort, and where. Empty list for none.
+		
+		readonly string[] NO_PROCESS = {}; //Ores to keep as ore, preventing any processing. Useful if this script is running on a mining ship and needs to cart the ore back to base for specialized processing.
 		//----------------------------------------------------------------------------------------------------------------
 		
 		//----------------------------------------------------------------------------------------------------------------
@@ -65,6 +66,14 @@ namespace Ingame_Scripts.CargoManager {
 		
 		private static bool isItemValidForContainer(string itemCategory, string itemType, string containerName) { //Whether the given cargo container can accept this item when emptied from other locations. This allows item-type-specific sorting.
 			return true;
+		}
+		
+		private static bool isSharedGrid(string name) { //Whether cargo, refineries, etc on this grid should be counted as part of the main grid.
+			return false;
+		}
+		
+		private static bool shutdownWhenDockedTo(string connector, string other, string grid) { //Whether to pause all execution when the given connector is connected to the given grid by the given other connector, perhaps so its copy of this script can take precedence.
+			return false;
 		}
 		
 		//----------------------------------------------------------------------------------------------------------------
@@ -98,28 +107,32 @@ namespace Ingame_Scripts.CargoManager {
 		
 		public Program() {
 			Runtime.UpdateFrequency = UpdateFrequency.Update10;			
-			GridTerminalSystem.GetBlocksOfType<IMyCargoContainer>(cargo, b => b.CubeGrid == Me.CubeGrid);
+			GridTerminalSystem.GetBlocksOfType<IMyCargoContainer>(cargo, b => b.CubeGrid == Me.CubeGrid || isSharedGrid(b.CubeGrid.DisplayName));
 			cargo.Sort(cargoBoxSortOrder);
-			GridTerminalSystem.GetBlocksOfType<IMyGasGenerator>(oxyGenerators, b => b.CubeGrid == Me.CubeGrid && (b.BlockDefinition.SubtypeName.Length == 0 || b.BlockDefinition.SubtypeName.ToLowerInvariant().Contains("oxygen")));
-			GridTerminalSystem.GetBlocksOfType<IMyAssembler>(assemblers, b => b.CubeGrid == Me.CubeGrid);
-			GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(displays, b => b.CubeGrid == Me.CubeGrid && b.CustomName.Contains(DISPLAY_TAG));
-			GridTerminalSystem.GetBlocksOfType<IMyReactor>(reactors, b => b.CubeGrid == Me.CubeGrid && b.BlockDefinition.SubtypeName.ToLowerInvariant().Contains("reactor"));
-			GridTerminalSystem.GetBlocksOfType<IMyShipConnector>(connectors, b => b.CubeGrid == Me.CubeGrid);
+			GridTerminalSystem.GetBlocksOfType<IMyGasGenerator>(oxyGenerators, b => (b.CubeGrid == Me.CubeGrid || isSharedGrid(b.CubeGrid.DisplayName)) && (b.BlockDefinition.SubtypeName.Length == 0 || b.BlockDefinition.SubtypeName.ToLowerInvariant().Contains("oxygen")));
+			GridTerminalSystem.GetBlocksOfType<IMyAssembler>(assemblers, b => b.CubeGrid == Me.CubeGrid || isSharedGrid(b.CubeGrid.DisplayName));
+			GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(displays, b => (b.CubeGrid == Me.CubeGrid || isSharedGrid(b.CubeGrid.DisplayName)) && b.CustomName.Contains(DISPLAY_TAG));
+			GridTerminalSystem.GetBlocksOfType<IMyReactor>(reactors, b => (b.CubeGrid == Me.CubeGrid || isSharedGrid(b.CubeGrid.DisplayName)) && b.BlockDefinition.SubtypeName.ToLowerInvariant().Contains("reactor"));
+			GridTerminalSystem.GetBlocksOfType<IMyShipConnector>(connectors, b => b.CubeGrid == Me.CubeGrid || isSharedGrid(b.CubeGrid.DisplayName));
 			
 			IMyBlockGroup grp = GridTerminalSystem.GetBlockGroupWithName(EJECTION_GROUP);
 			if (grp != null) {
 				grp.GetBlocksOfType<IMyShipConnector>(ejectors);
 				foreach (IMyShipConnector conn in ejectors) {
 					conn.CollectAll = false;
-					conn.ThrowOut = true;
+					//conn.ThrowOut = true;
 					//conn.SetUseConveyorSystem(false);
 				}
+			}
+			
+			for (int i = 0; i < NO_PROCESS.Length; i++) {
+				NO_PROCESS[i] = NO_PROCESS[i].ToLowerInvariant();
 			}
 			
 			List<IMyRefinery> li = new List<IMyRefinery>();
 			GridTerminalSystem.GetBlocksOfType<IMyRefinery>(li, b => b.CubeGrid == Me.CubeGrid && isActualProcessingRefinery(b.BlockDefinition.SubtypeName.ToLowerInvariant()));
 			foreach (IMyRefinery b in li) {
-				string id = b.BlockDefinition.SubtypeName.ToLowerInvariant();
+				string id = b.BlockDefinition.SubtypeName.ToLowerInvariant().Replace(" ", "");
 				RefineryType type = RefineryType.NORMAL;
 				if (id.Contains("uranium")) {
 					type = RefineryType.URANIUM;
@@ -127,7 +140,7 @@ namespace Ingame_Scripts.CargoManager {
 				else if (id.Contains("stone")/* && id.Contains("crusher")*/) {
 					type = RefineryType.STONE;
 				}
-				else if (id.Contains("blast") && id.Contains("furnace")) {
+				else if ((id.Contains("blast") && id.Contains("furnace")) || id.Contains("arcfurnace")) {
 					type = RefineryType.BLAST;
 				}
 				else if (id.Contains("platinum")) {
@@ -136,6 +149,7 @@ namespace Ingame_Scripts.CargoManager {
 				else if (id.Contains("basic")) {
 					type = RefineryType.BASIC;
 				}
+				Echo("Registered refinery "+b.CustomName+" as "+type+" from "+id);
 				registerRefinery(new Refinery(b, type));
 			}
 			
@@ -167,10 +181,25 @@ namespace Ingame_Scripts.CargoManager {
 			//tick++;
 			//if (tick%4 != 0)
 			//	return;
+			
+			tick++;
+			bool cancel = false;
+			foreach (IMyShipConnector conn in connectors) {
+				if (conn.Enabled && conn.Status == MyShipConnectorStatus.Connected) {
+					if (shutdownWhenDockedTo(conn.DisplayName, conn.OtherConnector.DisplayName, conn.OtherConnector.CubeGrid.DisplayName)) {
+					    cancel = true;
+					    break;
+					}
+				}
+			}
+			if (cancel) {
+				Echo("Docked to dominant grid; not managing inventories.");
+				return;
+			}
+			
 			Echo("Managing "+refineryCount+" refineries, "+assemblers.Count+" assemblers, "+oxyGenerators.Count+" O2 gens, and "+cargo.Count+" cargo containers.");
 			if (tick%50 == 0)
 				cacheSources();
-			tick++;
 			
 			if (ENABLE_ORE_SORTING) {
 				foreach (var entry in refineries) {
@@ -196,7 +225,7 @@ namespace Ingame_Scripts.CargoManager {
 					empty(ass.Mode == MyAssemblerMode.Disassembly ? ass.InputInventory : ass.OutputInventory);
 					List<MyProductionItem> li = new List<MyProductionItem>();
 					ass.GetQueue(li);
-					ass.Enabled = li.Count > 0 || ass.BlockDefinition.SubtypeName.ToLowerInvariant().Contains("survivalkit");
+					ass.Enabled = li.Count > 0 || ass.CooperativeMode || ass.BlockDefinition.SubtypeName.ToLowerInvariant().Contains("survivalkit");
 				}
 				
 				IMyGasGenerator gas = getRandom<IMyGasGenerator>(oxyGenerators);
@@ -217,12 +246,22 @@ namespace Ingame_Scripts.CargoManager {
 				}
 			}
 			if (tick%5 == 0) {
+				bool flag = false;
 				if (ejectionWatchers.Count > 0 && usedVolume/(float)maxCapacity >= EJECTION_THRESHOLD) {
 					foreach (ItemProfile p in ejectionWatchers) {
 						float f = getItemFraction(p);
+						Echo("Item type "+p.ToString()+" represents "+f*100+"% of items.");
 						if (f >= EJECTION_THRESHOLD) {
+							Echo("Ejecting excess.");
 							tryPrepareEjection(p);
+							flag = true;
 						}
+					}
+				}
+				if (!flag) {
+					Echo("No excess to eject.");
+					foreach (IMyShipConnector conn in ejectors) {
+						conn.ThrowOut = false;
 					}
 				}/*
 				foreach (IMyShipConnector con in connectors) {
@@ -249,7 +288,7 @@ namespace Ingame_Scripts.CargoManager {
 					int has = 0;
 					if (!inventoryAmounts.TryGetValue(ore.ingot, out has))
 						has = 0;
-					show("Ore '"+s+"' has priority check, have "+has+", thresh "+ore.threshold);
+					//show("Ore '"+s+"' has priority check, have "+has+", thresh "+ore.threshold);
 					if (has < ore.threshold) {
 						priority.Add(s);
 					}
@@ -258,9 +297,10 @@ namespace Ingame_Scripts.CargoManager {
 					}
 				}
 			}
+			//show("Sorting priority list "+string.Join(",", priority));
 			priority.Sort(sortOrePriority);
 			ret.InsertRange(0, priority);
-			show("Ore list '"+li.ToString()+" sorted by priority to "+ret.ToString());
+			//show("Ore list '"+string.Join(",", li)+" sorted by priority to "+string.Join(",", ret));
 			return ret;
 		}
 		
@@ -289,18 +329,16 @@ namespace Ingame_Scripts.CargoManager {
 			FoundItem f = findItem(p);
 			if (f != null) {
 				foreach (IMyShipConnector conn in ejectors) {
-					if (moveItem(f.source, conn.GetInventory(), f.item))
-						break;
+					if (conn.Enabled && moveItem(f.source, conn.GetInventory(), f.item))
+						conn.ThrowOut = true;
 				}
 			}
 		}
 		
 		private float getItemFraction(ItemProfile p) {
-			if (totalItems <= 0)
+			if (totalItems <= 0 || !allItems.ContainsKey(p))
 				return 0;
-			int has = 0;
-			allItems.TryGetValue(p, out has);
-			return has/totalItems;
+			return allItems[p]/(float)totalItems;
 		}
 		
 		private T getRandom<T>(List<T> blocks) where T : class {
@@ -397,6 +435,8 @@ namespace Ingame_Scripts.CargoManager {
 		}
 		
 		private bool isOreValid(string ore, Refinery refinery) {
+			if (NO_PROCESS.Contains(ore))
+				return false;
 			if (!refinery.validOres.Contains(ore))
 				return false;
 			if (refinery.type != RefineryType.STONE) {
@@ -649,7 +689,7 @@ namespace Ingame_Scripts.CargoManager {
 			
 		}
 		
-		internal class OrePriorityCheck : IComparable<OrePriorityCheck> {
+		internal class OrePriorityCheck : IComparable, IComparable<OrePriorityCheck> {
 			
 			internal readonly ItemProfile ore;
 			internal readonly ItemProfile ingot;
@@ -664,7 +704,12 @@ namespace Ingame_Scripts.CargoManager {
 			}
 			
 			public int CompareTo(OrePriorityCheck other) {
-				return index.CompareTo(other);
+				return index.CompareTo(other.index);
+			}
+			
+			public int CompareTo(object other) {
+				OrePriorityCheck o = other as OrePriorityCheck;
+				return o != null ? CompareTo(o) : -1;
 			}
 			
 		}

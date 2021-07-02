@@ -32,7 +32,7 @@ namespace Ingame_Scripts.CargoOffloading {
 		private string[] OFFLOAD_SHIPS = {"Anaconda"}; //Which ships the script should try to offload cargo into (Grid names)
 		//----------------------------------------------------------------------------------------------------------------
 		private static bool isInventory(IMyTerminalBlock b) { //which block types to attempt to empty
-			return b is IMyCargoContainer || b is IMyShipConnector || b is IMyCockpit || b is IMyShipToolBase;
+			return b is IMyCargoContainer || b is IMyShipConnector || b is IMyCockpit || b is IMyShipToolBase || b is IMyProductionBlock;
 		}
 		//----------------------------------------------------------------------------------------------------------------
 		//Do not change anything below here, as this is the actual program.
@@ -132,8 +132,19 @@ namespace Ingame_Scripts.CargoOffloading {
 		}
 		
 		private bool empty(IMyTerminalBlock cube) {
+			if (cube is IMyProductionBlock) {
+				bool flag = false;
+				flag |= emptyInventory(cube, ((IMyProductionBlock)cube).InputInventory);
+				flag |= emptyInventory(cube, ((IMyProductionBlock)cube).OutputInventory);
+				return flag;
+			}
+			else {
+				return emptyInventory(cube, cube.GetInventory());
+			}
+		}
+		
+		private bool emptyInventory(IMyTerminalBlock cube, IMyInventory src) {
 			List<MyInventoryItem> li = new List<MyInventoryItem>();
-			IMyInventory src = cube.GetInventory();
 			src.GetItems(li);
 			foreach (MyInventoryItem item in li) {
 				//Echo("Trying to move "+item.Amount.ToIntSafe()+" of "+item.Type.SubtypeId+" from "+cube.CustomName);

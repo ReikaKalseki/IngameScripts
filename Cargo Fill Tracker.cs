@@ -96,11 +96,28 @@ namespace Ingame_Scripts.CargoFill {
 			long capacity = 0;
 			long used = 0;
 			long totalItems = 0;
+			long capacityOver = 0;
+			long usedOver = 0;
+			long totalItemsOver = 0;
+			
+			List<string> nonfull = new List<string>();
 			
 			foreach (IMyEntity io in containers) {
 				IMyInventory inv = io.GetInventory(0);
-				capacity += inv.MaxVolume.ToIntSafe();
-				used += inv.CurrentVolume.ToIntSafe();
+				if (io is IMyProductionBlock) {
+					inv = ((IMyProductionBlock)io).InputInventory;
+				}
+				int cap = inv.MaxVolume.ToIntSafe();
+				int usedVol = inv.CurrentVolume.ToIntSafe();
+				if (cap != usedVol) {
+					string name = io.Name;
+					if (io is IMyTerminalBlock) {
+						name = ((IMyTerminalBlock)io).CustomName;
+					}
+					nonfull.Add(name);
+				}
+				capacity += cap;
+				used += usedVol;
 				List<MyInventoryItem> li = new List<MyInventoryItem>();
 				inv.GetItems(li);
 				foreach (MyInventoryItem ii in li) {
@@ -117,7 +134,9 @@ namespace Ingame_Scripts.CargoFill {
 			if (!TREAT_OVERFLOW_AS_MAIN && used >= capacity) {
 				foreach (IMyEntity io in overflow) {
 					IMyInventory inv = io.GetInventory(0); //do not increment capacity, so fill fraction goes over 100%
+					capacityOver += inv.MaxVolume.ToIntSafe();
 					used += inv.CurrentVolume.ToIntSafe();
+					usedOver += inv.CurrentVolume.ToIntSafe();
 					List<MyInventoryItem> li = new List<MyInventoryItem>();
 					inv.GetItems(li);
 					foreach (MyInventoryItem ii in li) {
@@ -128,6 +147,7 @@ namespace Ingame_Scripts.CargoFill {
 						amt += has;
 						counts[type] = amt;
 						totalItems += has;
+						totalItemsOver += has;
 					}
 				}
 			}
@@ -136,23 +156,27 @@ namespace Ingame_Scripts.CargoFill {
 			Color c = getDisplayColor(frac);
 			
 			foreach (IMyTextPanel scr in displays) {
-				scr.WritePublicText("");
+				scr.WriteText("");
 				scr.BackgroundColor = c;
 				scr.ContentType = ContentType.TEXT_AND_IMAGE;
 				scr.FontColor = new VRageMath.Color(255, 255, 255, 255);
 				
-				scr.WritePublicText("Cargo is "+Math.Round(frac*100, 1)+" % full.", true);
+				scr.WriteText("Cargo is "+Math.Round(frac*100, 1)+" % full.", true);
 				if (!TREAT_OVERFLOW_AS_MAIN && frac > 1) {
-					scr.WritePublicText("Cargo is overflowing!");
+					scr.WriteText("Cargo is overflowing!\n");
+					double frac2 = usedOver/(double)capacityOver;
+					scr.WriteText("Overflow is "+Math.Round(frac2*100, 1)+" % full.\n", true);
 				}
+				if (nonfull.Count > 0 && frac > 0.8)
+					scr.WriteText("Space remains in: "+string.Join(", ", nonfull), true);
 				if (SHOW_ITEM_BREAKDOWN) {
-					scr.WritePublicText(" Contents:\n", true);
+					scr.WriteText(" Contents:\n", true);
 					List<KeyValuePair<string, int>> entries = new List<KeyValuePair<string, int>>();
 					foreach (var entry in counts) {
 						entries.Add(entry);
 					}
-					entries.Sort((e1, e2) => e1.Value.CompareTo(e2.Value));
-					foreach (var entry in counts) {
+					entries.Sort((e1, e2) => -e1.Value.CompareTo(e2.Value));
+					foreach (var entry in entries) {
 						int prev = 0;
 						countsLast.TryGetValue(entry.Key, out prev);
 						string delta = "   (No change)";
@@ -165,15 +189,13 @@ namespace Ingame_Scripts.CargoFill {
 						if (countsLast.Count == 0) {
 							delta = "";
 						}
-						scr.WritePublicText(localize(entry.Key)+" x "+entry.Value+" ("+Math.Round(entry.Value*100F/totalItems, 1)+" %)"+delta, true);
-						scr.WritePublicText("\n", true);
+						scr.WriteText(localize(entry.Key)+" x "+entry.Value+" ("+Math.Round(entry.Value*100F/totalItems, 1)+" %)"+delta, true);
+						scr.WriteText("\n", true);
 					}
 				}
 				else {
-					scr.WritePublicText("\n", true);
+					scr.WriteText("\n", true);
 				}
-				
-				scr.ShowPublicTextOnScreen();
 			}
 			
 			if (SHOW_ITEM_BREAKDOWN) {

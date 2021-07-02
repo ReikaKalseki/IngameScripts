@@ -230,7 +230,7 @@ namespace Ingame_Scripts.O2Controlv2 {
 							if (sec.isDepressurized()) { //airlocks reguarly get opened to space; this is not a problem
 								showStatus(sec, true, false, tick);
 								if (sec.getAirPressureFraction() <= 0.01)
-								noAir.Add(name);
+									noAir.Add(name);
 								depressure.Add(name);
 							}
 							else if (sec.isBreached()) {
@@ -251,9 +251,12 @@ namespace Ingame_Scripts.O2Controlv2 {
 							}
 						}
 						foreach (InterfaceDoor inter in interDoors) {
+							bool noAirA = noAir.Contains(inter.sectionA);
+							bool noAirB = noAir.Contains(inter.sectionB);
+							bool noSplit = (SEPARATE_BREACHES ? (!noAirA && !noAirB) : noAirA == noAirB);
 							//close any doors that interface with a breached section, but open any that are sealed on both sides, provided neither section is not actively attempting to depressurize
 							//but close all doors the first cycle, to try to determine which sections are actually breached (not just exposed via door access)
-							inter.setState((SEPARATE_BREACHES ? (!noAir.Contains(inter.sectionA) && !noAir.Contains(inter.sectionB)) : noAir.Contains(inter.sectionA) == noAir.Contains(inter.sectionB)) && depressure.Contains(inter.sectionA) == depressure.Contains(inter.sectionB) && breachedSectionsLastTick.SetEquals(breachedSections));
+							inter.setState(noSplit && depressure.Contains(inter.sectionA) == depressure.Contains(inter.sectionB) && breachedSectionsLastTick.SetEquals(breachedSections));
 						}
 						
 						if (breachedSections.Count > 0) {
