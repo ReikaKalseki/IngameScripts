@@ -26,7 +26,7 @@ namespace Ingame_Scripts.PowerControlV2 {
 		//----------------------------------------------------------------------------------------------------------------
 		//Change the values of any of these as you see fit to configure the script as per your ship configuration or needs
 		//----------------------------------------------------------------------------------------------------------------
-		const string DISPLAY_TAG = "[PowerStatus]"; //Any LCD panel with this in its name is overridden to show the power status
+		const string DISPLAY_TAG = "PowerStatus"; //Any LCD panel with this in its name is overridden to show the power status
 		
 		const float BATTERY_REACTOR_MIN = 0.05F; //The fraction of battery capacity at which reactors are enabled, regardless of load, to prevent a blackout
 		const bool ENABLE_BATTERY_CHARGE_IF_LOW = false; //Whether to allow reactors to charge batteries during the above condition
@@ -45,22 +45,22 @@ namespace Ingame_Scripts.PowerControlV2 {
 		//----------------------------------------------------------------------------------------------------------------
 		private readonly MyDefinitionId electricityId = new MyDefinitionId(typeof(MyObjectBuilder_GasProperties), "Electricity");
 		
-		private readonly PowerSourceCollection<IMyPowerProducer> solars;
-		private readonly PowerSourceCollection<IMyPowerProducer> wind;
+		private readonly PowerSourceCollection solars;
+		private readonly PowerSourceCollection wind;
 		private readonly BatteryCollection batteries;
-		private readonly PowerSourceCollection<IMyReactor> reactors;
-		private readonly PowerSourceCollection<IMyReactor> hydrogengines;
+		private readonly PowerSourceCollection reactors;
+		private readonly PowerSourceCollection hydrogengines;
 		
 		private readonly List<IMyTextPanel> displays = new List<IMyTextPanel>();
 		
 		public Program() {
 			Runtime.UpdateFrequency = UpdateFrequency.Update100;
 			
-			solars = new PowerSourceCollection<IMyPowerProducer>(GridTerminalSystem, Me, b => !(b is IMyReactor || b is IMyBatteryBlock) && b.BlockDefinition.TypeId.ToString().Contains("Solar"));
-			wind = new PowerSourceCollection<IMyPowerProducer>(GridTerminalSystem, Me, b => !(b is IMyReactor || b is IMyBatteryBlock) && b.BlockDefinition.TypeId.ToString().Contains("Wind"));
-			batteries = new BatteryCollection(GridTerminalSystem, Me);
-			reactors = new PowerSourceCollection<IMyReactor>(GridTerminalSystem, Me, b => b.BlockDefinition.TypeId.ToString().Contains("Reactor"));
-			hydrogengines = new PowerSourceCollection<IMyReactor>(GridTerminalSystem, Me, b => b.BlockDefinition.TypeId.ToString().Contains("Hydrogen"));
+			solars = new PowerSourceCollection(this, Me, b => !(b is IMyReactor || b is IMyBatteryBlock) && b.BlockDefinition.TypeId.ToString().Contains("Solar"));
+			wind = new PowerSourceCollection(this, Me, b => !(b is IMyReactor || b is IMyBatteryBlock) && b.BlockDefinition.TypeId.ToString().Contains("Wind"));
+			batteries = new BatteryCollection(this, Me);
+			reactors = new PowerSourceCollection(this, Me, b => b.BlockDefinition.TypeId.ToString().Contains("Reactor"));
+			hydrogengines = new PowerSourceCollection(this, Me, b => b.BlockDefinition.TypeId.ToString().Contains("Hydrogen"));
 			
 			GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(displays, b => b.CustomName.Contains(DISPLAY_TAG) && b.CubeGrid == Me.CubeGrid);
 		}
@@ -76,7 +76,12 @@ namespace Ingame_Scripts.PowerControlV2 {
 			float remaining = load;
 			bool batteryUse = false;
 			foreach (string s in SOURCE_PRIORITY) {
-				PowerSourceCollection<IMyTerminalBlock> c = getCollection<IMyTerminalBlock>(s);
+				PowerSourceCollection c = getCollection(s);
+				float capacity = c.getMaxGeneration();
+				if (capacity <= 0) {
+					show("Power source type "+s+" is unavailable. Skipping.");
+					continue;
+				}
 				bool enable = remaining > 0;
 				if (s == "Battery") {
 					if (enable) {
@@ -87,7 +92,6 @@ namespace Ingame_Scripts.PowerControlV2 {
 				else {
 					c.setEnabled(enable);
 				}
-				float capacity = c.getMaxGeneration();
 				remaining -= capacity;
 				show("Power source type "+s+": "+(enable ? "In Use, producing up to "+capacity+"MW" : "Offline"));
 			}
@@ -95,20 +99,26 @@ namespace Ingame_Scripts.PowerControlV2 {
 				batteries.setCharging(true, false); 
 				show("Batteries are recharging.");
 			}
+			else {
+				show("Batteries are discharging.");
+			}
+			if (remaining > 0) {
+				show("Power supply exceeded by "+remaining+"MW!");
+			}
 		}
 		
-		private PowerSourceCollection<T> getCollection<T>(string id) where T: class, IMyTerminalBlock {
+		private PowerSourceCollection getCollection(string id) {
 			switch(id) {
 				case "Solar":
-					return (PowerSourceCollection<T>)((object)solars);
+					return solars;
 				case "Wind":
-					return (PowerSourceCollection<T>)((object)wind);
+					return wind;
 				case "Battery":
-					return (PowerSourceCollection<T>)((object)batteries);
+					return batteries;
 				case "Hydrogen":
-					return (PowerSourceCollection<T>)((object)hydrogengines);
+					return hydrogengines;
 				case "Reactor":
-					return (PowerSourceCollection<T>)((object)reactors);
+					return reactors;
 				default:
 					return null;
 			}
@@ -122,9 +132,17 @@ namespace Ingame_Scripts.PowerControlV2 {
             foreach (IMyTerminalBlock item in blocks) {
                 MyResourceSinkComponent sink;
                 if (item.Components.TryGet(out sink) && sink.AcceptedResources.IndexOf(electricityId) != -1) {
-                    if (item is IMyBatteryBlock)
+                	if (item is IMyBatteryBlock)
                         continue;
-                    ret += sink.RequiredInputByType(electricityId);
+                	if (item is IMyFunctionalBlock && !((IMyFunctionalBlock)item).Enabled)
+                		continue;
+                    float amt = sink.RequiredInputByType(electricityId);
+                    if (item is IMyProductionBlock) {
+                    	if (!((IMyProductionBlock)item).IsQueueEmpty) {
+                    		amt = Math.Max(amt, sink.MaxRequiredInputByType(electricityId));
+                    	}
+                    }
+                    ret += amt;
                 }
             }
             return ret;
@@ -137,15 +155,16 @@ namespace Ingame_Scripts.PowerControlV2 {
 			Echo(text);
 		}
 		
-		internal class PowerSourceCollection<T> where T: class, IMyTerminalBlock { //f--- C#'s handling of generics
+		internal class PowerSourceCollection {
 			
 			protected readonly List<PowerSource> sources = new List<PowerSource>();
 			
-			internal PowerSourceCollection(IMyGridTerminalSystem grid, IMyProgrammableBlock cpu, Func<IMyTerminalBlock, bool> collect = null) {
-				List<T> blocks = new List<T>();
-				grid.GetBlocksOfType<T>(blocks, b => b.CubeGrid == cpu.CubeGrid && (collect == null || collect(b)));
+			internal PowerSourceCollection(MyGridProgram prog, IMyProgrammableBlock cpu, Func<IMyTerminalBlock, bool> collect = null) {
+				List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+				prog.GridTerminalSystem.GetBlocksOfType(blocks, b => b.CubeGrid == cpu.CubeGrid && (collect == null || collect(b)));
 				foreach (IMyTerminalBlock block in blocks) {
 					sources.Add(createSource(block));
+					prog.Echo("Created source "+sources[sources.Count-1]+" from "+block.CustomName);
 				}
 			}
 			
@@ -189,12 +208,12 @@ namespace Ingame_Scripts.PowerControlV2 {
 			
 		}
 		
-		internal class BatteryCollection : PowerSourceCollection<IMyBatteryBlock> {
+		internal class BatteryCollection : PowerSourceCollection {
 			
 			private bool recharge;
 			private bool discharge;
 			
-			internal BatteryCollection(IMyGridTerminalSystem grid, IMyProgrammableBlock cpu) : base(grid, cpu) {
+			internal BatteryCollection(MyGridProgram grid, IMyProgrammableBlock cpu) : base(grid, cpu, b => b is IMyBatteryBlock) {
 			
 			}
 			
@@ -310,7 +329,7 @@ namespace Ingame_Scripts.PowerControlV2 {
 		internal class BatterySource : PowerSource {
 			
 			internal BatterySource(IMyBatteryBlock b) : base(b) {
-				
+
 			}
 			
 			public float getStoredEnergy() {
