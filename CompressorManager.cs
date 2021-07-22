@@ -186,8 +186,15 @@ namespace Ingame_Scripts.CompressorManager {
 		
 			internal void handleTanks(out float tankFrac, out float compFrac, out int flowDir) {
 				float f = getTankLevel();
+				tankFrac = f;
+				compFrac = getCompressorLevel();
 				bool fill = f >= (loading ? minFrac*1.2F : maxFrac);
 				bool empty = f < (unloading ? maxFrac/1.2F : minFrac);
+				if (fill && compFrac >= 0.999)
+					fill = false;
+				if (empty && compFrac <= 0.001)
+					empty = false;
+				//Echo(name+" status: "+String.Format("{0:0.000}", (tankFrac*100))+"% tanks, "+String.Format("{0:0.000}", (compFrac*100))+" compressors = "+fill+"/"+empty);
 				if (fill) {
 					loading = true;
 					unloading = false;
@@ -206,8 +213,6 @@ namespace Ingame_Scripts.CompressorManager {
 					setCompressorStatuses(false, false);
 					setTankStatuses(false);
 				}
-				tankFrac = f;
-				compFrac = getCompressorLevel();
 				flowDir = loading ? 1 : (unloading ? -1 : 0);
 			}
 			

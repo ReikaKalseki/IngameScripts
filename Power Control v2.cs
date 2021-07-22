@@ -51,7 +51,19 @@ namespace Ingame_Scripts.PowerControlV2 {
 		private readonly PowerSourceCollection reactors;
 		private readonly PowerSourceCollection hydrogengines;
 		
-		private readonly List<IMyTextPanel> displays = new List<IMyTextPanel>();
+		private readonly List<IMyTextPanel> displays = new List<IMyTextPanel>();	
+		
+		private readonly Vector2 screenSize = new Vector2(1024, 512);
+		private readonly float edgePadding = 16;
+		private readonly float lineGap = 4;
+		private readonly float lineSize = 32;
+		private readonly Vector2 indicatorSize = new Vector2(0, 0);
+		
+		private readonly Color GREEN_COLOR = new Color(40, 255, 40, 255);
+		private readonly Color YELLOW_COLOR = new Color(255, 192, 40, 255);
+		private readonly Color RED_COLOR = new Color(255, 40, 40, 255);		
+		private readonly Color BLUE_COLOR = new Color(20, 96, 255, 255);
+		private readonly Color GRAY = new Color(40, 40, 40, 255);	
 		
 		public Program() {
 			Runtime.UpdateFrequency = UpdateFrequency.Update100;
@@ -63,23 +75,32 @@ namespace Ingame_Scripts.PowerControlV2 {
 			hydrogengines = new PowerSourceCollection(this, Me, b => b.BlockDefinition.TypeId.ToString().Contains("Hydrogen"));
 			
 			GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(displays, b => b.CustomName.Contains(DISPLAY_TAG) && b.CubeGrid == Me.CubeGrid);
+			
+			indicatorSize.X = (screenSize.X-edgePadding*2)/2;
+			indicatorSize.Y = lineSize-lineGap;
 		}
 		
 		public void Main() { //called each cycle
+			List<MySpriteDrawFrame> li = new List<MySpriteDrawFrame>();
 			foreach (IMyTextPanel scr in displays) {
-				scr.WriteText(""); //clear
-				scr.ContentType = ContentType.TEXT_AND_IMAGE;
+				li.Add(prepareScreen(scr));
 			}
 			
+			float has = batteries.getStoredEnergy();
+			float cap = batteries.getCapacity();
+			float f2 = has/cap;
+			
 			float load = getCurrentPowerDemand(Me.CubeGrid);
-			show("Grid power demand is "+load+"MW");
+			float dy = 0;
+			drawText(li, edgePadding, dy, "Grid power demand is "+String.Format("{0:0.000}", load)+"MW");
+			dy += lineSize;
 			float remaining = load;
 			bool batteryUse = false;
 			foreach (string s in SOURCE_PRIORITY) {
 				PowerSourceCollection c = getCollection(s);
 				float capacity = c.getMaxGeneration();
 				if (capacity <= 0) {
-					show("Power source type "+s+" is unavailable. Skipping.");
+					Echo("Power source type "+s+" is unavailable. Skipping.");
 					continue;
 				}
 				bool enable = remaining > 0;
@@ -93,17 +114,68 @@ namespace Ingame_Scripts.PowerControlV2 {
 					c.setEnabled(enable);
 				}
 				remaining -= capacity;
-				show("Power source type "+s+": "+(enable ? "In Use, producing up to "+capacity+"MW" : "Offline"));
+				float f = c.getTotalGeneration()/capacity;
+				drawText(li, edgePadding, dy, s+": "+String.Format("{0:0.0}", f*100)+" % x "+String.Format("{0:0.000}", capacity)+"MW");
+				drawBox(li, screenSize.X/2+edgePadding/2, dy+lineSize, indicatorSize.X-edgePadding, indicatorSize.Y, GRAY);
+				drawBox(li, screenSize.X/2+edgePadding/2, dy+lineSize-4, indicatorSize.X-edgePadding, indicatorSize.Y-8, enable ? YELLOW_COLOR : RED_COLOR);
+				if (f > 0)
+					drawBox(li, screenSize.X/2+edgePadding/2, dy+lineSize-4, (indicatorSize.X-edgePadding)*f-4, indicatorSize.Y-8, GREEN_COLOR);
+				Echo("Power source type "+s+": "+(enable ? "In Use, producing up to "+capacity+"MW" : "Offline"));
+				dy += lineSize;
 			}
-			if (!batteryUse) {
-				batteries.setCharging(true, false); 
-				show("Batteries are recharging.");
+			
+			dy += lineSize*2;
+			
+			drawText(li, edgePadding, dy, "Batteries: "+String.Format("{0:0}", has)+"MWh / "+String.Format("{0:0}", cap)+"MWh");
+			Color indicator = batteryUse ? YELLOW_COLOR : BLUE_COLOR;
+			drawBox(li, screenSize.X/2+edgePadding/2, dy+lineSize, indicatorSize.X-edgePadding, indicatorSize.Y, GRAY);
+			drawBox(li, screenSize.X/2+edgePadding/2, dy+lineSize-4, (indicatorSize.X-edgePadding)*f2-4, indicatorSize.Y-8, indicator);
+			if (batteryUse) {
+				Echo("Batteries are discharging.");
 			}
 			else {
-				show("Batteries are discharging.");
+				batteries.setCharging(true, false); 
+				Echo("Batteries are recharging.");
 			}
+			
+			dy += lineSize*2;
+			
 			if (remaining > 0) {
-				show("Power supply exceeded by "+remaining+"MW!");
+				drawText(li, edgePadding, dy, "Power supply exceeded by "+remaining+"MW!", Color.Red);
+			}
+			
+			foreach (MySpriteDrawFrame frame in li) {
+				frame.Dispose();
+			}
+		}
+		
+		private MySpriteDrawFrame prepareScreen(IMyTextPanel scr) {
+			scr.ContentType = ContentType.SCRIPT;
+       		MySpriteDrawFrame frame = scr.DrawFrame();
+       		frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", size: screenSize, color: Color.Black));
+       		return frame;
+		}
+		
+		private void drawBox(List<MySpriteDrawFrame> li, float x, float y, float w, float h, Color c) {
+			Vector2 box = new Vector2(w, h);
+    		Vector2 ctr = new Vector2(x*2-screenSize.X/2+w/2, y-h/2);
+    		MySprite sprite = new MySprite(SpriteType.TEXTURE, "SquareSimple", size: box, color: c);
+       		sprite.Position = ctr;
+       		foreach (MySpriteDrawFrame frame in li) {
+				frame.Add(sprite);
+       		}
+		}
+		
+		private void drawText(List<MySpriteDrawFrame> li, float x, float y, string s) {
+			drawText(li, x, y, s, Color.White);
+		}
+		
+		private void drawText(List<MySpriteDrawFrame> li, float x, float y, string s, Color c) {
+			MySprite text = MySprite.CreateText(s, "monospace", c, lineSize/24F);
+			text.Alignment = TextAlignment.LEFT;
+			text.Position = new Vector2(x, y);
+       		foreach (MySpriteDrawFrame frame in li) {
+				frame.Add(text);
 			}
 		}
 		
@@ -147,13 +219,13 @@ namespace Ingame_Scripts.PowerControlV2 {
             }
             return ret;
         }
-		
+		/*
 		private void show(string text) {
 			foreach (IMyTextPanel scr in displays) {
 				scr.WriteText(text+"\n", true);
 			}
 			Echo(text);
-		}
+		}*/
 		
 		internal class PowerSourceCollection {
 			
@@ -234,11 +306,19 @@ namespace Ingame_Scripts.PowerControlV2 {
 			}
 			
 			public float getStoredEnergy() {
-				float e = 0;
+				float has = 0;
 				foreach (BatterySource src in sources) {
-					e += src.getStoredEnergy();
+					has += src.getStoredEnergy();
 				}
-				return e/sourceCount();
+				return has;
+			}
+			
+			public float getCapacity() {
+				float cap = 0;
+				foreach (BatterySource src in sources) {
+					cap += src.getCapacity();
+				}
+				return cap;
 			}
 			
 			public bool areRecharging() {
@@ -259,18 +339,12 @@ namespace Ingame_Scripts.PowerControlV2 {
 				block = b;
 			}
 			
-			public float getMaxGeneration() {
-				if (!isEnabled()) {
-					return 0;
-				}
+			public virtual float getMaxGeneration() {
 				if (block is IMyReactor) {
 					return (block as IMyReactor).MaxOutput;
 				}
 				else if (block is IMyPowerProducer) {
 					return (block as IMyPowerProducer).MaxOutput;
-				}
-				else if (block is IMyBatteryBlock) {
-					return (block as IMyBatteryBlock).MaxOutput;
 				}
 				else {
 					return 0;
@@ -328,12 +402,23 @@ namespace Ingame_Scripts.PowerControlV2 {
 		
 		internal class BatterySource : PowerSource {
 			
+			private float maxOutput = 0.001F;
+			
 			internal BatterySource(IMyBatteryBlock b) : base(b) {
 
 			}
 			
+			public override float getMaxGeneration() {
+				maxOutput = Math.Max((block as IMyBatteryBlock).MaxOutput, maxOutput);
+				return maxOutput;
+			}
+			
 			public float getStoredEnergy() {
-				return (block as IMyBatteryBlock).CurrentStoredPower/(block as IMyBatteryBlock).MaxStoredPower;
+				return (block as IMyBatteryBlock).CurrentStoredPower;
+			}
+			
+			public float getCapacity() {
+				return (block as IMyBatteryBlock).MaxStoredPower;
 			}
 			
 			public void setCharging(bool recharge, bool discharge) {
