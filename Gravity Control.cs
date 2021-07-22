@@ -63,7 +63,7 @@ namespace Ingame_Scripts.GravityControl {
 			}
 			gravDrives.AddList(li);
 			GridTerminalSystem.GetBlocksOfType<IMyGravityGenerator>(gravGens, b => b.CubeGrid == Me.CubeGrid && !gravDrives.Contains(b));
-			GridTerminalSystem.GetBlocksOfType<IMyOreDetector>(oreDetectors, b => b.CubeGrid == Me.CubeGrid);
+			GridTerminalSystem.GetBlocksOfType<IMyOreDetector>(oreDetectors, b => b.CubeGrid == Me.CubeGrid && !b.CustomName.Contains("Cloaking"));
 			GridTerminalSystem.GetBlocksOfType<IMyShipController>(cockpits, b => b.CubeGrid == Me.CubeGrid);
 			
 			upDirection = Me.Orientation.Up;
