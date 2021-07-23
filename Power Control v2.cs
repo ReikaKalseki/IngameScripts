@@ -68,11 +68,11 @@ namespace Ingame_Scripts.PowerControlV2 {
 		public Program() {
 			Runtime.UpdateFrequency = UpdateFrequency.Update100;
 			
-			solars = new PowerSourceCollection(this, Me, b => !(b is IMyReactor || b is IMyBatteryBlock) && b.BlockDefinition.TypeId.ToString().Contains("Solar"));
-			wind = new PowerSourceCollection(this, Me, b => !(b is IMyReactor || b is IMyBatteryBlock) && b.BlockDefinition.TypeId.ToString().Contains("Wind"));
+			solars = new PowerSourceCollection(this, Me, b => b is IMyPowerProducer && !(b is IMyReactor || b is IMyBatteryBlock) && b.BlockDefinition.TypeId.ToString().Contains("Solar"));
+			wind = new PowerSourceCollection(this, Me, b => b is IMyPowerProducer && !(b is IMyReactor || b is IMyBatteryBlock) && b.BlockDefinition.TypeId.ToString().Contains("Wind"));
 			batteries = new BatteryCollection(this, Me);
-			reactors = new PowerSourceCollection(this, Me, b => b.BlockDefinition.TypeId.ToString().Contains("Reactor"));
-			hydrogengines = new PowerSourceCollection(this, Me, b => b.BlockDefinition.TypeId.ToString().Contains("Hydrogen"));
+			reactors = new PowerSourceCollection(this, Me, b => b is IMyReactor && b.BlockDefinition.TypeId.ToString().Contains("Reactor"));
+			hydrogengines = new PowerSourceCollection(this, Me, b => b is IMyReactor && b.BlockDefinition.TypeId.ToString().Contains("Hydrogen"));
 			
 			GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(displays, b => b.CustomName.Contains(DISPLAY_TAG) && b.CubeGrid == Me.CubeGrid);
 			
