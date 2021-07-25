@@ -89,6 +89,7 @@ namespace Ingame_Scripts.PowerControlV2 {
 			float has = batteries.getStoredEnergy();
 			float cap = batteries.getCapacity();
 			float f2 = has/cap;
+			bool lowBattery = f2 < BATTERY_REACTOR_MIN;
 			
 			float load = getCurrentPowerDemand(Me.CubeGrid);
 			float dy = 0;
@@ -96,6 +97,7 @@ namespace Ingame_Scripts.PowerControlV2 {
 			dy += lineSize;
 			float remaining = load;
 			bool batteryUse = false;
+			bool afterBattery = false;
 			foreach (string s in SOURCE_PRIORITY) {
 				PowerSourceCollection c = getCollection(s);
 				float capacity = c.getMaxGeneration();
@@ -104,11 +106,15 @@ namespace Ingame_Scripts.PowerControlV2 {
 					continue;
 				}
 				bool enable = remaining > 0;
+				if (afterBattery) {
+					enable |= lowBattery;
+				}
 				if (s == "Battery") {
 					if (enable) {
-						batteries.setCharging(false, true); 
+						batteries.setCharging(lowBattery && ENABLE_BATTERY_CHARGE_IF_LOW, true); 
 						batteryUse = true;
 					}
+					afterBattery = true;
 				}
 				else {
 					c.setEnabled(enable);
