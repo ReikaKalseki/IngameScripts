@@ -30,7 +30,7 @@ namespace Ingame_Scripts.AirlockControlV3 {
 		//----------------------------------------------------------------------------------------------------------------
 		//Change the values of any of these as you see fit to configure the script as per your ship configuration or needs
 		//----------------------------------------------------------------------------------------------------------------		
-		const string VENT_ID = "Air Vent";
+		const string VENT_ID = "Air Vent"; //The name of air vents to look for
 		
 		const string AIRLOCK_SCREEN_ID = "AirlockScreen"; //Anything whose name contains this is used for overall display of airlock states.		
 		const string EXTERNAL_BLOCK_ID = "External"; //Anything whose name contains this is assumed to be exposed to the ship/station exterior
@@ -43,11 +43,11 @@ namespace Ingame_Scripts.AirlockControlV3 {
 		//----------------------------------------------------------------------------------------------------------------
 		//Change the body of any of these as you see fit to configure how certain functions are evaluated.
 		//----------------------------------------------------------------------------------------------------------------
-		static bool isOuterAirlockDoor(string name) {
+		static bool isOuterAirlockDoor(string name) { //Whether a door is part of the outer half of an airlock
 			return name.Contains(EXTERNAL_BLOCK_ID) || name.Contains("Outer") || name.Contains("Exterior");
 		}
 		
-		static bool isInnerAirlockDoor(string name) {
+		static bool isInnerAirlockDoor(string name) { //Whether a door is part of the inner half of an airlock
 			return name.Contains("Inner") || name.Contains("Interior");
 		}
 		//----------------------------------------------------------------------------------------------------------------

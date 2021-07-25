@@ -43,7 +43,8 @@ namespace Ingame_Scripts.AnacondaProjector {
 		public void Main() { //called each cycle
 			if (done)
 				return;
-			projector.ProjectionOffset = new Vector3I(-2, -2, 61); //xyz = horiz/vertical/forwards
+			projector.ProjectionOffset = new Vector3I(4, 7, 16); //xyz = horiz/vertical/forwards
+			projector.ProjectionRotation = new Vector3I(-1, 0, 0);
 			projector.UpdateVisual();
 			projector.UpdateOffsetAndRotation();
 			done = true;

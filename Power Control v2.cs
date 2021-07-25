@@ -72,7 +72,7 @@ namespace Ingame_Scripts.PowerControlV2 {
 			wind = new PowerSourceCollection(this, Me, b => b is IMyPowerProducer && !(b is IMyReactor || b is IMyBatteryBlock) && b.BlockDefinition.TypeId.ToString().Contains("Wind"));
 			batteries = new BatteryCollection(this, Me);
 			reactors = new PowerSourceCollection(this, Me, b => b is IMyReactor && b.BlockDefinition.TypeId.ToString().Contains("Reactor"));
-			hydrogengines = new PowerSourceCollection(this, Me, b => b is IMyReactor && b.BlockDefinition.TypeId.ToString().Contains("Hydrogen"));
+			hydrogengines = new PowerSourceCollection(this, Me, b => b is IMyPowerProducer && b.BlockDefinition.TypeId.ToString().Contains("Hydrogen"));
 			
 			GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(displays, b => b.CustomName.Contains(DISPLAY_TAG) && b.CubeGrid == Me.CubeGrid);
 			
@@ -110,6 +110,7 @@ namespace Ingame_Scripts.PowerControlV2 {
 					enable |= lowBattery;
 				}
 				if (s == "Battery") {
+					enable &= !lowBattery;
 					if (enable) {
 						batteries.setCharging(lowBattery && ENABLE_BATTERY_CHARGE_IF_LOW, true); 
 						batteryUse = true;
@@ -346,7 +347,12 @@ namespace Ingame_Scripts.PowerControlV2 {
 					return (block as IMyReactor).MaxOutput;
 				}
 				else if (block is IMyPowerProducer) {
-					return (block as IMyPowerProducer).MaxOutput;
+					IMyPowerProducer pro = (IMyPowerProducer)block;
+					bool flag = pro.Enabled;
+					pro.Enabled = true;
+					float ret = pro.MaxOutput;
+					pro.Enabled = flag;
+					return ret;
 				}
 				else {
 					return 0;
@@ -360,11 +366,11 @@ namespace Ingame_Scripts.PowerControlV2 {
 				if (block is IMyReactor) {
 					return (block as IMyReactor).CurrentOutput;
 				}
-				else if (block is IMyPowerProducer) {
-					return (block as IMyPowerProducer).CurrentOutput;
-				}
 				else if (block is IMyBatteryBlock) {
 					return (block as IMyBatteryBlock).CurrentOutput;
+				}
+				else if (block is IMyPowerProducer) {
+					return (block as IMyPowerProducer).CurrentOutput;
 				}
 				else {
 					return 0;
@@ -375,11 +381,11 @@ namespace Ingame_Scripts.PowerControlV2 {
 				if (block is IMyReactor) {
 					(block as IMyReactor).Enabled = enable;
 				}
-				else if (block is IMySolarPanel) {
-					block.ApplyAction(enable ? "OnOff_On" : "OnOff_Off");
-				}
 				else if (block is IMyBatteryBlock) {
 					(block as IMyBatteryBlock).Enabled = enable;
+				}
+				else if (block is IMySolarPanel) {
+					block.ApplyAction(enable ? "OnOff_On" : "OnOff_Off");
 				}
 			}
 			
@@ -387,11 +393,11 @@ namespace Ingame_Scripts.PowerControlV2 {
 				if (block is IMyReactor) {
 					return (block as IMyReactor).Enabled;
 				}
-				else if (block is IMySolarPanel) {
-					return true;//Sandbox.ModAPI.Interfaces.TerminalPropertyExtensions.GetValueBool(block, "Enabled");
-				}
 				else if (block is IMyBatteryBlock) {
 					return (block as IMyBatteryBlock).Enabled;
+				}
+				else if (block is IMySolarPanel) {
+					return true;//Sandbox.ModAPI.Interfaces.TerminalPropertyExtensions.GetValueBool(block, "Enabled");
 				}
 				return true;
 			}
