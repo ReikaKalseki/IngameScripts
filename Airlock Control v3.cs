@@ -18,6 +18,8 @@ using IMyShipConnector = Sandbox.ModAPI.Ingame.IMyShipConnector;
 using IMyAirVent = SpaceEngineers.Game.ModAPI.Ingame.IMyAirVent;
 using IMySoundBlock = SpaceEngineers.Game.ModAPI.Ingame.IMySoundBlock;
 
+using VRage.Game.GUI.TextPanel;
+
 namespace Ingame_Scripts.AirlockControlV3 {
 	
 	public class Program : MyGridProgram {
@@ -57,7 +59,16 @@ namespace Ingame_Scripts.AirlockControlV3 {
 		private readonly Dictionary<string, Airlock> airlocks = new Dictionary<string, Airlock>();
 		private readonly List<IMyAirVent> externalVents = new List<IMyAirVent>();
 		private readonly List<IMyGasTank> tanks = new List<IMyGasTank>();
-			private readonly List<IMyTextPanel> displays = new List<IMyTextPanel>();
+		private readonly List<IMyTextPanel> displays = new List<IMyTextPanel>();
+		
+		private readonly Vector2 screenSize = new Vector2(1024, 512);
+		private readonly float lineSize = 25;
+		private readonly float edgePadding = 16;
+			
+		private static readonly Color GREEN = new Color(0, 255, 0, 255);
+		private static readonly Color RED = new Color(255, 0, 0, 255);
+		private static readonly Color YELLOW = new Color(255, 255, 0, 255);
+		private static readonly Color BLUE = new Color(0, 80, 255, 255);
 		
 		public Program() {
 			Runtime.UpdateFrequency = UpdateFrequency.Update10;
@@ -78,7 +89,7 @@ namespace Ingame_Scripts.AirlockControlV3 {
 		}
 		
 		private static string createID(IMyAirVent vent) {			
-			string repl = vent.CustomName.Replace(VENT_ID, "").Trim();
+			string repl = vent.CustomName.Replace(VENT_ID, "").Replace("Airlock", "").Trim();
 			while (repl[0] == ' ' || repl[0] == ':' || repl[0] == '-') {
 				repl = repl.Substring(1).Trim();
 			}
@@ -91,20 +102,57 @@ namespace Ingame_Scripts.AirlockControlV3 {
 		public void Main() { //called each cycle
 			float f = getExternalAtmo();
 			double f2 = getTankFill();
-			foreach (IMyTextPanel p in displays) {
-				p.WriteText("");
+			List<MySpriteDrawFrame> li = new List<MySpriteDrawFrame>();
+			foreach (IMyTextPanel scr in displays) {
+				li.Add(prepareScreen(scr));
 			}
+			float dy = 0;
 			foreach (Airlock a in airlocks.Values) {
 				AirlockState s = a.tick(f, f2);
 				string name = s.ToString().ToUpperInvariant()[0]+s.ToString().Substring(1).ToLowerInvariant();
-				if (a.isBreached()) {
+				Color? c = null;
+				switch(s) {
+					case AirlockState.CLOSED:
+						c = BLUE;
+						break;
+					case AirlockState.INNER:
+						c = YELLOW;
+						break;
+					case AirlockState.OUTER:
+						c = YELLOW;
+						break;
+					case AirlockState.OPEN:
+						c = GREEN;
+						break;
+				}
+				if (s != AirlockState.OPEN && s != AirlockState.OUTER && a.isBreached()) {
 					name = "breached!";
+					c = RED;
 				}
 				string sg = "Airlock "+a.airlockID+" is "+name;
-				foreach (IMyTextPanel p in displays) {
-					p.WriteText(sg+"\n", true);
-				}
+				drawText(li, edgePadding, dy, sg, c);
+				dy += lineSize;
 			}
+			
+			foreach (MySpriteDrawFrame frame in li) {
+				frame.Dispose();
+			}
+		}
+		
+		private void drawText(List<MySpriteDrawFrame> li, float x, float y, string s, Color? c = null) {
+			MySprite text = MySprite.CreateText(s, "monospace", c != null && c.HasValue ? c.Value : Color.White, lineSize/24F);
+			text.Alignment = TextAlignment.LEFT;
+			text.Position = new Vector2(x, y);
+       		foreach (MySpriteDrawFrame frame in li) {
+				frame.Add(text);
+			}
+		}
+		
+		private MySpriteDrawFrame prepareScreen(IMyTextPanel scr) {
+			scr.ContentType = ContentType.SCRIPT;
+       		MySpriteDrawFrame frame = scr.DrawFrame();
+       		frame.Add(new MySprite(SpriteType.TEXTURE, "SquareSimple", size: screenSize, color: Color.Black));
+       		return frame;
 		}
 		
 		private float getExternalAtmo() {
@@ -135,10 +183,6 @@ namespace Ingame_Scripts.AirlockControlV3 {
 		}
 		
 		internal class Airlock {
-			
-			private readonly Color GREEN = new Color(0, 255, 0, 255);
-			private readonly Color RED = new Color(255, 0, 0, 255);
-			private readonly Color YELLOW = new Color(255, 255, 0, 0);
 			
 			private readonly MyGridProgram caller;
 			internal readonly string airlockID;

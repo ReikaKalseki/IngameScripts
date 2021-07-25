@@ -166,12 +166,8 @@ namespace Ingame_Scripts.PowerControlV2 {
        		}
 		}
 		
-		private void drawText(List<MySpriteDrawFrame> li, float x, float y, string s) {
-			drawText(li, x, y, s, Color.White);
-		}
-		
-		private void drawText(List<MySpriteDrawFrame> li, float x, float y, string s, Color c) {
-			MySprite text = MySprite.CreateText(s, "monospace", c, lineSize/24F);
+		private void drawText(List<MySpriteDrawFrame> li, float x, float y, string s, Color? c = null) {
+			MySprite text = MySprite.CreateText(s, "monospace", c != null && c.HasValue ? c.Value : Color.White, lineSize/24F);
 			text.Alignment = TextAlignment.LEFT;
 			text.Position = new Vector2(x, y);
        		foreach (MySpriteDrawFrame frame in li) {
@@ -236,7 +232,7 @@ namespace Ingame_Scripts.PowerControlV2 {
 				prog.GridTerminalSystem.GetBlocksOfType(blocks, b => b.CubeGrid == cpu.CubeGrid && (collect == null || collect(b)));
 				foreach (IMyTerminalBlock block in blocks) {
 					sources.Add(createSource(block));
-					prog.Echo("Created source "+sources[sources.Count-1]+" from "+block.CustomName);
+					//prog.Echo("Created source "+sources[sources.Count-1]+" from "+block.CustomName);
 				}
 			}
 			
