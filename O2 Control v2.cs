@@ -312,7 +312,7 @@ namespace Ingame_Scripts.O2Controlv2 {
 				int maxw = (maxSections/2);
 				int pad = maxw-sec.sectionName.Length;
 				int barSize = maxw;
-				float f = depressure || breach ? 0 : sec.getAirPressureFraction();
+				float f = breach ? 0 : sec.getAirPressureFraction();
 				int fill = (int)(f*barSize+0.5);
 				int red = barSize/4;
 				int yellow = barSize/2;
@@ -328,7 +328,7 @@ namespace Ingame_Scripts.O2Controlv2 {
 						bool has = i < fill;
 						string color = has ? (i < red ? redArrow : (i < yellow ? yellowArrow : greenArrow)) : whiteArrow;
 						if (depressure)
-							color = cyanArrow;
+							color = has || i%2 == 1 ? cyanArrow : whiteArrow;
 						else if (breach)
 							color = scr.update%2 == 0 ? magentaArrow : whiteArrow;
 						line = line+color;

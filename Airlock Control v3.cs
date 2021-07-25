@@ -30,6 +30,7 @@ namespace Ingame_Scripts.AirlockControlV3 {
 		//----------------------------------------------------------------------------------------------------------------		
 		const string VENT_ID = "Air Vent";
 		
+		const string AIRLOCK_SCREEN_ID = "AirlockScreen"; //Anything whose name contains this is used for overall display of airlock states.		
 		const string EXTERNAL_BLOCK_ID = "External"; //Anything whose name contains this is assumed to be exposed to the ship/station exterior
 		const string AIRLOCK_BLOCK_ID = "Airlock"; //Anything whose name contains this is assumed to be part of an airlock
 		
@@ -56,11 +57,13 @@ namespace Ingame_Scripts.AirlockControlV3 {
 		private readonly Dictionary<string, Airlock> airlocks = new Dictionary<string, Airlock>();
 		private readonly List<IMyAirVent> externalVents = new List<IMyAirVent>();
 		private readonly List<IMyGasTank> tanks = new List<IMyGasTank>();
+			private readonly List<IMyTextPanel> displays = new List<IMyTextPanel>();
 		
 		public Program() {
 			Runtime.UpdateFrequency = UpdateFrequency.Update10;
 			
 			GridTerminalSystem.GetBlocksOfType<IMyAirVent>(externalVents, b => b.CubeGrid == Me.CubeGrid && b.CustomName.Contains(EXTERNAL_BLOCK_ID));
+			GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(displays, b => b.CubeGrid == Me.CubeGrid && b.CustomName.Contains(AIRLOCK_SCREEN_ID));
 			GridTerminalSystem.GetBlocksOfType<IMyGasTank>(tanks, b => b.CubeGrid == Me.CubeGrid && b.CustomName.Contains("Oxygen"));
 			
 			List<IMyAirVent> li = new List<IMyAirVent>();
@@ -88,8 +91,19 @@ namespace Ingame_Scripts.AirlockControlV3 {
 		public void Main() { //called each cycle
 			float f = getExternalAtmo();
 			double f2 = getTankFill();
+			foreach (IMyTextPanel p in displays) {
+				p.WriteText("");
+			}
 			foreach (Airlock a in airlocks.Values) {
-				a.tick(f, f2);
+				AirlockState s = a.tick(f, f2);
+				string name = s.ToString().ToUpperInvariant()[0]+s.ToString().Substring(1).ToLowerInvariant();
+				if (a.isBreached()) {
+					name = "breached!";
+				}
+				string sg = "Airlock "+a.airlockID+" is "+name;
+				foreach (IMyTextPanel p in displays) {
+					p.WriteText(sg+"\n", true);
+				}
 			}
 		}
 		
@@ -127,13 +141,12 @@ namespace Ingame_Scripts.AirlockControlV3 {
 			private readonly Color YELLOW = new Color(255, 255, 0, 0);
 			
 			private readonly MyGridProgram caller;
-			private readonly string airlockID;
+			internal readonly string airlockID;
 			private readonly VRage.Game.ModAPI.Ingame.IMyCubeGrid shipGrid;
 			
 			private readonly List<IMyDoor> outerDoors = new List<IMyDoor>();
 			private readonly List<IMyDoor> innerDoors = new List<IMyDoor>();
 			private readonly List<IMyAirVent> vents = new List<IMyAirVent>();	
-			private readonly List<IMyTextPanel> displays = new List<IMyTextPanel>();
 			private readonly List<IMyLightingBlock> lights = new List<IMyLightingBlock>();
 					
 			private float atmoLastTick;
@@ -149,8 +162,7 @@ namespace Ingame_Scripts.AirlockControlV3 {
 				List<IMyBlockGroup> groups = new List<IMyBlockGroup>();
 
 				caller.GridTerminalSystem.GetBlocksOfType<IMyAirVent>(vents, b => b.CustomName.Contains(AIRLOCK_BLOCK_ID) && b.CustomName.Contains(airlockID) && b.CubeGrid == caller.Me.CubeGrid);
-				caller.GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(displays, b => b.CustomName.Contains(AIRLOCK_BLOCK_ID) && b.CustomName.Contains(airlockID) && b.CubeGrid == caller.Me.CubeGrid);
-				caller.GridTerminalSystem.GetBlocksOfType<IMyLightingBlock>(lights, b => b.CustomName.Contains(AIRLOCK_BLOCK_ID) && b.CustomName.Contains(airlockID) && b.CubeGrid == caller.Me.CubeGrid);
+				caller.GridTerminalSystem.GetBlocksOfType<IMyLightingBlock>(lights, b => b.CustomName.Contains(AIRLOCK_BLOCK_ID) && (b.CustomName.Contains(airlockID) || b.CustomName.Contains(AIRLOCK_SCREEN_ID)) && b.CubeGrid == caller.Me.CubeGrid);
 				
 				List<IMyDoor> li = new List<IMyDoor>();
 				caller.GridTerminalSystem.GetBlocksOfType<IMyDoor>(li, b => b.CustomName.Contains(AIRLOCK_BLOCK_ID) && b.CustomName.Contains(airlockID) && b.CubeGrid == caller.Me.CubeGrid);
@@ -171,7 +183,7 @@ namespace Ingame_Scripts.AirlockControlV3 {
 						setDoorStates(outerDoors, true, true, setOpenState);
 						setVents(externalAtmo);
 						if (externalAtmo)
-							setLightState(true, GREEN);
+							setLightState(false);
 						else
 							setLightState(true, RED, 1);
 						break;
@@ -179,19 +191,19 @@ namespace Ingame_Scripts.AirlockControlV3 {
 						setDoorStates(innerDoors, true, false, setOpenState);
 						setDoorStates(outerDoors, true, false, setOpenState);
 						setVents(true);
-						setLightState(false);
+						setLightState(true, Color.Lerp(YELLOW, GREEN, 1-airLevel));
 						break;
 					case AirlockState.INNER:
 						setDoorStates(innerDoors, true, true, setOpenState);
 						setDoorStates(outerDoors, true, false, setOpenState);
 						setVents(false);
-						setLightState(true, YELLOW);
+						setLightState(true, RED);
 						break;
 					case AirlockState.OUTER:
 						setDoorStates(innerDoors, true, false, setOpenState);
 						setDoorStates(outerDoors, true, true, setOpenState);
 						setVents(true);
-						setLightState(true, YELLOW);
+						setLightState(true, RED);
 						break;
 				}
 			}
@@ -273,14 +285,9 @@ namespace Ingame_Scripts.AirlockControlV3 {
 				return true;
 			}
 			
-			internal void tick(float atmo, double tankFill) {				
-				foreach (IMyTextPanel scr in displays) {
-					scr.WriteText(""); //clear
-				}
-				
-				if (atmo < MAX_ATMOSPHERE) {					
-					show("No external atmosphere present.");
-				
+			internal AirlockState tick(float atmo, double tankFill) {
+				AirlockState? ret = null;
+				if (atmo < MAX_ATMOSPHERE) {									
 					float air = getAtmo();
 					
 					if (atmoLastTick > atmo) { //accidentally left outside doors open? But only want to fire this once, not continuously, or it keeps closing airlocks
@@ -288,14 +295,14 @@ namespace Ingame_Scripts.AirlockControlV3 {
 					}
 						
 					if (isDepressurized()) {
-						show("Airlock '"+airlockID+"' is depressurized.");
+						//show("Airlock '"+airlockID+"' is depressurized.");
 					}
 					else if (isBreached()) {
-						show("Airlock '"+airlockID+"' is breached!");
+						caller.Echo("Airlock '"+airlockID+"' is breached!");
 						setAirlockState(AirlockState.CLOSED, false, air);
 					}
 					else {
-						show("Airlock '"+airlockID+"' is pressurized.");
+						//show("Airlock '"+airlockID+"' is pressurized.");
 					}
 					
 					AirlockState s = getCurrentAirlockState();
@@ -308,15 +315,17 @@ namespace Ingame_Scripts.AirlockControlV3 {
 						setDoorStates(outerDoors, false, false);
 					}
 					
-					show("Airlock '"+airlockID+"' is "+s+".");
+					caller.Echo("Airlock '"+airlockID+"' is "+s+".");
+				
+					ret = s;
 				}
 				else {
-					show("Usable external atmosphere present.");
 					setAirlockState(AirlockState.OPEN, true, atmo); //fresh air
-					show("All airlocks fully open.");
+					ret = AirlockState.OPEN;
 				}
 				
 				atmoLastTick = atmo;
+				return ret.Value;
 			}
 			
 			internal void preventAccidentalOpen(AirlockState s) {
@@ -346,14 +355,6 @@ namespace Ingame_Scripts.AirlockControlV3 {
 					}
 				}
 				return false;
-			}
-		
-			private void show(string text) {
-				foreach (IMyTextPanel scr in displays) {
-					scr.WriteText(text+"\n", true);
-					scr.FontSize = 0.707F;
-				}
-				caller.Echo(text);
 			}
 			
 		}
