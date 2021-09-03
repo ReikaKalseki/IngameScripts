@@ -63,7 +63,9 @@ namespace Ingame_Scripts.PowerControlV2 {
 		private readonly Color YELLOW_COLOR = new Color(255, 192, 40, 255);
 		private readonly Color RED_COLOR = new Color(255, 40, 40, 255);		
 		private readonly Color BLUE_COLOR = new Color(20, 96, 255, 255);
-		private readonly Color GRAY = new Color(40, 40, 40, 255);	
+		private readonly Color GRAY = new Color(40, 40, 40, 255);
+
+		private int tick = 0;
 		
 		public Program() {
 			Runtime.UpdateFrequency = UpdateFrequency.Update100;
@@ -97,7 +99,6 @@ namespace Ingame_Scripts.PowerControlV2 {
 			dy += lineSize;
 			float remaining = load;
 			bool batteryUse = false;
-			bool afterBattery = false;
 			foreach (string s in SOURCE_PRIORITY) {
 				PowerSourceCollection c = getCollection(s);
 				float capacity = c.getMaxGeneration();
@@ -106,16 +107,20 @@ namespace Ingame_Scripts.PowerControlV2 {
 					continue;
 				}
 				bool enable = remaining > 0;
-				if (afterBattery) {
-					enable |= lowBattery;
-				}
 				if (s == "Battery") {
-					enable &= !lowBattery;
+					bool allowRecharge = true;
+					if (lowBattery) {
+						if (enable)
+							allowRecharge = ENABLE_BATTERY_CHARGE_IF_LOW;
+						enable = false;
+					}
 					if (enable) {
-						batteries.setCharging(lowBattery && ENABLE_BATTERY_CHARGE_IF_LOW, true); 
+						batteries.setCharging(false, true); 
 						batteryUse = true;
 					}
-					afterBattery = true;
+					else {
+						batteries.setCharging(allowRecharge, false); 
+					}
 				}
 				else {
 					c.setEnabled(enable);
@@ -132,8 +137,8 @@ namespace Ingame_Scripts.PowerControlV2 {
 			}
 			
 			dy += lineSize*2;
-			
-			drawText(li, edgePadding, dy, "Batteries: "+String.Format("{0:0}", has)+"MWh / "+String.Format("{0:0}", cap)+"MWh");
+			Color batColor = lowBattery ? (tick%2 == 0 ? RED_COLOR : YELLOW_COLOR) : Color.White;
+			drawText(li, edgePadding, dy, "Batteries: "+String.Format("{0:0}", has)+"MWh / "+String.Format("{0:0}", cap)+"MWh", batColor);
 			Color indicator = batteryUse ? YELLOW_COLOR : BLUE_COLOR;
 			drawBox(li, screenSize.X/2+edgePadding/2, dy+lineSize, indicatorSize.X-edgePadding, indicatorSize.Y, GRAY);
 			drawBox(li, screenSize.X/2+edgePadding/2, dy+lineSize-4, (indicatorSize.X-edgePadding)*f2-4, indicatorSize.Y-8, indicator);
@@ -141,7 +146,6 @@ namespace Ingame_Scripts.PowerControlV2 {
 				Echo("Batteries are discharging.");
 			}
 			else {
-				batteries.setCharging(true, false); 
 				Echo("Batteries are recharging.");
 			}
 			
@@ -154,6 +158,7 @@ namespace Ingame_Scripts.PowerControlV2 {
 			foreach (MySpriteDrawFrame frame in li) {
 				frame.Dispose();
 			}
+			tick++;
 		}
 		
 		private MySpriteDrawFrame prepareScreen(IMyTextPanel scr) {

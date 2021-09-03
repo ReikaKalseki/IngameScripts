@@ -11,7 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace Ingame_Scripts.StationProx {
+namespace Ingame_Scripts.CargoEvac {
 	
 	public class Program : MyGridProgram {
 		
@@ -47,13 +47,13 @@ namespace Ingame_Scripts.StationProx {
 		}
 		
 		public void Main() {	
-			if (shouldEscape) {
+			if (shouldEscape()) {
 				jump[0].ApplyAction("Jump");
 			}
 		}
 		
 		private bool shouldEscape() {
-			
+			return false;
 		}
 		
 		//====================================================

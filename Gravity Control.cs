@@ -26,10 +26,11 @@ namespace Ingame_Scripts.GravityControl {
 		//----------------------------------------------------------------------------------------------------------------
 		const string DISPLAY_TAG = "[GravityStatus]"; //Any LCD panel with this in its name is overridden to show the gravity status
 		
-		const float TARGET_GRAVITY = 0.2F; //The desired net gravity level in Gs
+		const float TARGET_GRAVITY = 0.4F; //The desired net gravity level in Gs
 		const float MAX_ORE_GRAVITY = 0.05F; //The maximum gravity at which Ore Detectors are enabled. Not recommended to be anything above 0.05 for long-range modded detectors.
 		
 		const bool SPLIT_GRAVITY = false; //Whether to split the desired artificial gravity equally among all generators. Ie, do their ranges substantially overlap?
+		const bool MANNED_ORE = true; //Whether to require that the ship be manned for ore detectors to be active.
 		//----------------------------------------------------------------------------------------------------------------
 		
 		//----------------------------------------------------------------------------------------------------------------
@@ -91,7 +92,8 @@ namespace Ingame_Scripts.GravityControl {
 				scr.WritePublicText(""); //clear
 			}
 			
-			float natural = getNaturalGravity();
+			bool manned;
+			float natural = getNaturalGravity(out manned);
 			float net = Math.Max(0, TARGET_GRAVITY-natural);
 			setArtificialGravity(natural, net);
 			if (net > 0)
@@ -99,7 +101,8 @@ namespace Ingame_Scripts.GravityControl {
 			else
 				show("Natural gravity is "+natural+" G, of a target "+TARGET_GRAVITY+" G; Artificial gravity disabled.");
 			
-			bool ores = natural <= MAX_ORE_GRAVITY;
+			show("Ship is manned: "+manned);
+			bool ores = natural <= MAX_ORE_GRAVITY && (!MANNED_ORE || manned);
 			setOreDetectors(ores);
 			show("Ore detectors enabled: "+ores);
 		}
@@ -154,10 +157,12 @@ namespace Ingame_Scripts.GravityControl {
 			}
 		}
 		
-		private float getNaturalGravity() {
+		private float getNaturalGravity(out bool manned) {
+			manned = false;
 			double gmax = 0;
 			foreach (IMyShipController pit in cockpits) { 
 				gmax = Math.Max(gmax, pit.GetNaturalGravity().Length());
+				manned |= pit.IsUnderControl;
 			}
 			return (float)(gmax/9.81F);
 		}
